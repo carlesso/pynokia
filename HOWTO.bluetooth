@@ -1,0 +1,84 @@
+Here is a simple howto to configure your bluetooth device to work proper with this program.
+
+You have of course to have bluez installed, and some basic bluetooth-program installed. I gues that you need at least hcid, sdpd, rfcomm and dund (not sure about hidd and pand).
+
+Use your distro's script to startup bluetooth system, or start them in this order:
+/usr/sbin/hcid -f /etc/bluetooth/hcid.conf
+/usr/sbin/sdpd
+/usr/bin/hidd --server
+/usr/sbin/hid2hci --tohci > /dev/null 2>&1 || true
+/usr/bin/rfcomm -f /etc/bluetooth/rfcomm.conf bind all || true
+/usr/bin/dund --listen --persist
+
+Run 
+# sdptool search DUN
+
+to find out the channel you will need, the outpyt looks like:
+
+Inquiring ...
+Searching for DUN on <yout btaddress> ...
+Service Name: Dial-Up Networking
+Service RecHandle: 0x1003b
+Service Class ID List:
+  "Dialup Networking" (0x1103)
+Protocol Descriptor List:
+  "L2CAP" (0x0100)
+  "RFCOMM" (0x0003)
+    Channel: 2                       <-- This is the channel you need
+Language Base Attr List:
+  code_ISO639: 0x454e
+  encoding:    0x6a
+  base_offset: 0x100
+Profile Descriptor List:
+  "Dialup Networking" (0x1103)
+    Version: 0x0100
+
+
+Your /etc/bluetooth/rfcomm.conf must have an entry like this:
+
+rfcomm0 {
+        bind yes;
+        device <your btaddres>;
+        channel 2;      # The channel you find previusly
+        comment "My phone";
+}
+
+Restart your bluetooth system, then you must have a device called /dev/rfcomm0, that is the default port for my program.
+
+Now you have to authorize your pc into the smartphone (it's not neccesary if you already done it under other operative system).
+To achieve this, the fastest way is to download the bluez source code from http://www.bluez.org/download
+
+In the packet you'll find a directory called test/ with various scripts, we need simple-agent.
+
+Turn your devicein this way:
+# hciconfig hci0 piscan
+
+This means it's discoverable from other device, then simply call simple-agent:
+# ./simple-agent
+The script will prompts "Agent registered".
+Now add a new paired device from your phone, scan for it and choose your computer.
+The phone will ask you for a passcode, insert one at yout choiche.
+
+The, the script will ask you the confirmation:
+
+ RequestPinCode (/org/bluez/1354/hci0/dev_<your_bt_address>
+ Enter PIN Code:
+
+Just type the code you entered in the phone and allow (if you whish) automatical binding.
+You're done!
+
+Now you should have your connection persistent. Type:
+
+# rfcomm
+and you should have an output like:
+rfcomm0: <your btaddress> channel 0 clean
+
+if not try:
+
+# rfcomm release all; rfcomm bind 0
+
+Try it by invonking minicom with the device setted to /dev/rfcomm0 and 19200 8N1.
+
+Typing AT you shoul receive a OK.
+
+Now you're ready to use pynokia :) 

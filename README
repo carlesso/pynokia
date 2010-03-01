@@ -1,0 +1,12 @@
+pynokia 0.1-alpha - A simple program to send sms with a nokia phone
+Copyright (C) 2007 Enrico Carlesso
+
+I find a program like this one really useful...
+
+NOTE: It depends form pyserial module... You can fetch it form
+
+http://pyserial.sourceforge.net
+
+Thank you!
+
+The author

@@ -1,0 +1,338 @@
+#!/usr/bin/python
+
+###############################################################################
+# pynokia - A python nokia-AT commands interface                              #
+# Copyright (C) 2007 Enrico Carlesso                                          #
+#                                                                             #
+# This file is part of Pynokia.                                               #
+#                                                                             #
+# Pynokia is free software; you can redistribute it and/or modify             #
+# it under the terms of the GNU General Public License as published by        #
+# the Free Software Foundation; either version 2 of the License, or           #
+# (at your option) any later version.                                         #
+#                                                                             #
+# This program is distributed in the hope that it will be useful,             #
+# but WITHOUT ANY WARRANTY; without even the implied warranty of              #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the               #
+# GNU General Public License for more details.                                #
+#                                                                             #
+# You should have received a copy of the GNU General Public License           #
+# along with this program; if not, write to the Free Software                 #
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA  #
+###############################################################################
+
+###############################################################################
+# Written by Enrico Carlesso <enricocarlesso@gmail.com>                       #
+# If you find this program useful, please let me know.                        #
+###############################################################################
+
+import os, sys, time
+from posixpath import exists, expanduser
+from time import sleep
+try:
+	import serial
+except(ImportError):
+	sys.stderr.write("Unable to import serial module. You can get it from http://pyserial.sourceforge.net\n")
+	sys.exit(4)
+	
+class Nokia:
+	changedevice = 0
+	ddevice = ''
+	device = ''
+	baud = 19200
+	provider = ''
+	pmcns = 'AT+CSCA="' + provider + '"' + chr(13) #provider message center number string
+	init_string="AT+CMGF=1" + chr(13)
+	version = "0.1-alpha"
+	filepath = "~/.pynokianumbers"
+	providerlist = {'Omnitel' : '+393492000200', 'Wind' : '+393205858500', 'Tim' : '+393359609600'}
+	booklist = {}
+	success = 0
+	
+	def __init__(self, device=''):
+		self.refresh()
+		if device != '':
+			self.device = device
+		if self.device == '':
+			self.changedevice = 1
+			print "No default device selected, please inser one!"
+			self.choosedevice()
+			self.writebooklist()
+			self.refresh()
+	
+	def initialize(self):
+		try:
+			print "Binding to:", self.device
+			self.sock =  serial.Serial(self.device,
+				baudrate=self.baud,
+				bytesize=serial.EIGHTBITS,     #number of databits
+				parity=serial.PARITY_NONE,     #enable parity checking
+				stopbits=serial.STOPBITS_ONE,  #number of stopbits
+				timeout=0,              #set a timeout value, None for waiting forever
+				xonxoff=0,              #enable software flow control
+				rtscts=0,               #enable RTS/CTS flow control
+			)
+			self.sock.write(self.init_string)
+			sleep(1)
+			self.success = 1
+		except:
+			sys.stderr.write('Not able to bind device\n')
+			self.success = 0
+
+	def __del__(self):
+		self.sock.close()
+
+	def printconf(self):
+		print "Actual configuration:"
+		print "Device is         --> ", self.device
+		print "Message Center is --> ", self.provider
+		if self.provider in self.providerlist.values():
+			print "  This is the default message center for"
+		return 0
+
+	def refresh(self):
+		if not exists(expanduser(self.filepath)):
+			print "It seems you have no booklist, going to create it"
+			print "For now it's a simple empty file, called", self.filepath
+			print "The sintax is really simple, file is so composed:"
+			print "Name = number"
+			print "You can insert them by hand or using this program"
+			self.writebooklist()
+		else:
+			self.booklist = {}
+			fh = open(expanduser(self.filepath)).readlines()
+			for i in fh:
+				if i.split('=')[0].strip(' ') == 'provider':
+					self.provider = i.split('=')[1].strip(' ')[:-1]
+				elif i.split('=')[0].strip(' ') == 'device':
+					self.ddevice = self.device = i.split('=')[1].strip(' ')[:-1]
+				else:
+					self.booklist[i.split('=')[0].strip(' ')] = i.split('=')[1].strip(' ')[:-1]
+			if self.provider == '':
+				self.chooseprovider()
+			
+	def chooseprovider(self):
+		print "You have to choose a message center provider number:"
+		for i in self.providerlist.keys():
+			print i, " -> ", self.providerlist[i]
+		print "Or insert your own, (leading +39)"
+		while 1:
+			pr = raw_input('Input choiche, or number: ')
+			if pr in self.providerlist.keys():
+				self.provider = self.providerlist[pr]
+				print "Ok,", pr, "choosen. You can edit it by tiping e"
+				break
+			elif len(pr) == 13 and pr[0:3] == '+39':
+				self.provider = pr
+				break
+			else:
+				print "Unrecognized options"
+		self.writebooklist()
+			
+	def choosedevice(self):
+		print "Maybe you want to use devices like /dev/rfcomm0 (bt) or /dev/ttyACM0 (cable)"
+		print "Now the default device is", self.ddevice
+		dev = raw_input("Insert device: ")
+		if exists(dev):
+			self.device = dev
+			self.changedevice = 1
+			self.writebooklist()
+			self.refresh()
+			print "Ok, from now %s will be the default device" % dev
+			return 1
+		else:
+			sys.stderr.write('pynokia: %s: No such file or directory\n' % dev)
+			return 4
+
+	def printbook(self):
+		for i in self.booklist.keys():
+			print i.ljust(20), " -> ", self.booklist[i]
+
+	def match(self, token):
+		results = []
+		for i in self.booklist.keys():
+			if token in i:
+				results += [i]
+		if len(results) == 0:
+			for i in self.booklist.keys():
+				if i.lower() in token.lower():
+					results.insert[i]
+		return results
+
+	def insert(self, name, number):
+		if len(number) != 10 or (len(number) == 13 and number[0:3] != '+39'):
+			sys.stderr.write("Invalid number format!\n")
+			return 2
+		if len(number) == 10:
+			number = '+39' + number
+		self.booklist[name] = number
+		return self.writebooklist()
+
+	def remove(self, name):
+		self.booklist.pop(name)
+		self.writebooklist()
+		return 1
+		
+	def writebooklist(self):
+		fh = open(expanduser(self.filepath), 'w')
+		fh.write('provider = %s\n' % self.provider)
+		if self.changedevice:
+			fh.write('device = %s\n' % self.device)
+			self.changedevice = 0
+		else:
+			fh.write('device = %s\n' % self.ddevice)
+		for i in self.booklist.keys():
+			fh.write('%s = %s\n' % (i, self.booklist[i]))
+		fh.close()
+		self.refresh()
+		return 1
+
+
+	def sendmessage(self, recipient, message):
+		if len(message) > 160:
+			print "Message is too long, do you want to split into", len(message)/160+1, "message?"
+			a = 'boh'
+			while a not in ['yes', 'no']:
+				a = raw_input('Insert yes or no: ')
+			if a == 'no':
+				print "Ok, dropping message"
+				return 3
+			else:
+				for i in range(1 + len(message)/160):
+					self.sendmessage(recipient, message[i*160:(i+1)*160])
+					sleep(5)
+				return 0
+		print "Sending\nTo:", recipient, "\nMessage:", message, "\nSize:", len(message), "chars"
+		print ''
+		self.sock.write(self.pmcns)
+		sleep(1)
+		self.sock.write('AT+CMGS="' + self.booklist[recipient] + '"' + chr(13))
+		sleep(1)
+		self.sock.write(message + chr(26))
+		return 0
+
+	def status(self):
+		self.sock.write('AT+CBC' + chr(13))
+		sleep(1)
+		result = self.sock.readlines()
+		self.sock.write('AT+CSQ' + chr(13))
+		sleep(1)
+		result += self.sock.readlines()
+		for i in result:
+			if 'CBC:' in i:
+				batt = i.split(' ')[1][:-1]
+				print "Battery status is", batt
+			elif 'CSQ:' in i:
+				sign = i.split(' ')[1][:-1]
+				print "Signal quality is", sign
+		
+device = '0'
+for i in sys.argv[1:]:
+	if device == '1':
+		device = i
+		break
+	if i in ['--device', '-d']:
+		device = '1'
+
+if device != '0' and len(device) < 3:
+	sys.stderr.write('Wrong device insert, check sintax.\n%s -d /dev/xxxx\n' % sys.argv[0])
+	sys.exit(3)
+if device != '0' and not exists(device):
+	sys.stderr.write('pynokia: %s: No such file or directory')
+	sys.exit(5)
+
+if device != '0':
+	nk = Nokia(device)
+else:
+	nk = Nokia()
+
+nk.initialize()
+while not nk.success:
+	sys.stderr.write('Unable to bind to device %s!\n' % nk.device)
+	nk.choosedevice()
+	nk.initialize()
+
+
+print "Pynokia", nk.version
+print "Initalizing connection"
+while 1:
+	print "Command (h for help):",
+	choiche = raw_input()
+	print ''
+	if choiche in ['send', 's', 'w', 'write']:
+		try:
+			print "Choose recipient by inserting a substring"
+			nk.printbook()
+			a = 0;
+			while a == 0:
+				recipient = raw_input("Insert recipient (or ^C to abort): ")
+				recipient = nk.match(recipient)
+				if len(recipient) > 1:
+					print "Matched", len(recipient), "items:"
+					for i in recipient:
+						print "  -- ", i
+				else:
+					recipient = recipient[0]
+					a = 1
+			print "Insert message (or ^C to abort): ", recipient
+			message = raw_input()
+			nk.sendmessage(recipient, message)
+		except(KeyboardInterrupt):
+			print "\nAborting Message composer"
+			continue
+	elif choiche in ['list', 'l', 'ls']:
+		nk.printbook()
+	elif choiche in ['quit', 'exit', 'q']:
+		print "Bye bye"
+		break
+	elif choiche in ['a', 'add']:
+		name = raw_input('Insert name: ')
+		number = raw_input('Insert number: ')
+		ret = nk.insert(name, number)
+		if ret == 1:
+			print name, "added into address book"
+		elif ret == 2:
+			sys.stderr.write('Unable to insert %s into address book, check number format (must be +39xxxxxxxxxx)\n' % number)
+		else:
+			print "Error inserting name"
+	elif choiche in ['d', 'del']:
+		name = raw_input('Insert substring of the name to removed: ')
+		match = nk.match(name)
+		if len(match) > 1:
+			print "Match too may items, increase accuracy"
+			for i in match:
+				"  -- ", i
+		if len(match) == 0:
+			print "Nothing matched!"
+		else:
+			nk.remove(match[0])
+			print match[0], "removed form address book"
+	elif choiche in ['e', 'edit']:
+		print "What configuration parameters to write?"
+		sel = raw_input('[m]essage, [d]evice: ')
+		if sel in ['m', 'message']:
+			nk.chooseprovider()
+		elif sel in ['d', 'device']:
+			nk.choosedevice()
+	elif choiche in ['c', 'conf']:
+		nk.printconf()
+	elif choiche in ['b', 'status']:
+		nk.status()
+	elif choiche in ['h', 'help']:
+		print "Command action"
+		print "   l   List address book entries"
+		print "   p   Print, alias for l"
+		print "   s   Send message, asking for the recipient"
+		print "   w   Write, alias for s"
+		print "   a   Add an entry into address book"
+		print "   d   Delete an entry from address book"
+		print "   e   Edit configuration items (message center number, default device...)"
+		print "   c   Show configuration parameters"
+		print "   b   Show battery status"
+		print "   q   Quit pynokya"
+	else:
+		print "Command not recognized"
+	print ''
+
+del nk
+sys.exit(0)

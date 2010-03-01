@@ -1,0 +1,22 @@
+Installation:
+
+No significative hint about installing, I mean no one came
+from my code.
+
+Rember you need pyserial from http://pyserial.sourceforge.net/
+
+
+1.  BUILDING
+
+No building neccessary
+
+2.  INSTALLATION
+
+Type 'make install' (as root if needed) to install the executables
+under '/usr/local/bin' or whathever was specified as PREFIX into
+Makefile.
+
+3.  UNINSTALLATION
+
+Type 'make uninstall' (as root if needed) to remove executables
+installed.
